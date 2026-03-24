@@ -1,0 +1,208 @@
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --accent-color: #e74c3c;
+    --dark-bg: #1a1a2e;
+    --card-bg: #16213e;
+}
+
+body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.container-fluid {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+}
+
+header h1 {
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+header h1 i {
+    font-size: 2rem;
+    margin: 0 10px;
+}
+
+.stat-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: none;
+    border-radius: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.stat-card i {
+    color: rgba(255,255,255,0.9);
+}
+
+.stat-card h3 {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.stat-card p {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.nav-tabs {
+    border-bottom: 2px solid var(--secondary-color);
+}
+
+.nav-tabs .nav-link {
+    color: var(--primary-color);
+    font-weight: 600;
+    border: none;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: transparent;
+    color: var(--secondary-color);
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--secondary-color);
+    border-bottom: 3px solid var(--secondary-color);
+    background: transparent;
+}
+
+/* Tabulator Custom Styles */
+.tabulator {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.tabulator .tabulator-header {
+    background: var(--primary-color);
+    color: white;
+}
+
+.tabulator .tabulator-header .tabulator-col {
+    background: var(--primary-color);
+    border-right: 1px solid rgba(255,255,255,0.2);
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+    color: white;
+    font-weight: 600;
+}
+
+.tabulator .tabulator-tableholder .tabulator-table .tabulator-row {
+    transition: background-color 0.2s ease;
+}
+
+.tabulator .tabulator-tableholder .tabulator-table .tabulator-row:hover {
+    background-color: #f0f0f0;
+}
+
+.tabulator .tabulator-footer {
+    background: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Search results */
+#search-results {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.search-result-item {
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.search-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.search-result-item i {
+    margin-right: 10px;
+    width: 20px;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    text-align: center;
+    padding: 50px;
+}
+
+.loading-spinner i {
+    font-size: 3rem;
+    color: var(--secondary-color);
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding: 15px;
+    }
+    
+    .stat-card h3 {
+        font-size: 1.5rem;
+    }
+    
+    .nav-tabs .nav-link {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+}
+
+/* Tooltips */
+.tabulator-cell {
+    position: relative;
+}
+
+.tabulator-cell:hover {
+    cursor: pointer;
+}
+
+/* Badge styles */
+.badge-galaxy {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+
+.badge-star {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+
+.badge-planet {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}

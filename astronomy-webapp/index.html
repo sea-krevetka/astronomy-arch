@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Астрономический каталог</title>
+    
+    <!-- Tabulator CSS -->
+    <link href="https://unpkg.com/tabulator-tables@5.6.0/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/tabulator-tables@5.6.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <header class="text-center mb-5">
+            <h1 class="display-4">
+                <i class="fas fa-star-of-life text-warning"></i>
+                Астрономический каталог
+                <i class="fas fa-galaxy text-primary"></i>
+            </h1>
+            <p class="lead">База данных галактик, звезд, планет и спутников</p>
+        </header>
+        
+        <!-- Статистика -->
+        <div class="row mb-4" id="statistics">
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-galaxy fa-3x text-primary"></i>
+                        <h3 id="total-galaxies" class="mt-2">0</h3>
+                        <p class="text-muted">Галактик</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-sun fa-3x text-warning"></i>
+                        <h3 id="total-stars" class="mt-2">0</h3>
+                        <p class="text-muted">Звезд</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-globe fa-3x text-success"></i>
+                        <h3 id="total-planets" class="mt-2">0</h3>
+                        <p class="text-muted">Планет</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-moon fa-3x text-secondary"></i>
+                        <h3 id="total-satellites" class="mt-2">0</h3>
+                        <p class="text-muted">Спутников</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Навигация -->
+        <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="galaxies-tab" data-bs-toggle="tab" data-bs-target="#galaxies" type="button" role="tab">
+                    <i class="fas fa-galaxy"></i> Галактики
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stars-tab" data-bs-toggle="tab" data-bs-target="#stars" type="button" role="tab">
+                    <i class="fas fa-sun"></i> Звезды
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="planets-tab" data-bs-toggle="tab" data-bs-target="#planets" type="button" role="tab">
+                    <i class="fas fa-globe"></i> Планеты
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="satellites-tab" data-bs-toggle="tab" data-bs-target="#satellites" type="button" role="tab">
+                    <i class="fas fa-moon"></i> Спутники
+                </button>
+            </li>
+        </ul>
+        
+        <!-- Поиск -->
+        <div class="row mb-4">
+            <div class="col-md-6 mx-auto">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="search-input" placeholder="Поиск по названию...">
+                    <button class="btn btn-primary" id="search-btn" type="button">
+                        <i class="fas fa-search"></i> Найти
+                    </button>
+                </div>
+                <div id="search-results" class="mt-2" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- Таблицы -->
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="galaxies" role="tabpanel">
+                <div id="galaxies-table"></div>
+            </div>
+            <div class="tab-pane fade" id="stars" role="tabpanel">
+                <div id="stars-table"></div>
+            </div>
+            <div class="tab-pane fade" id="planets" role="tabpanel">
+                <div id="planets-table"></div>
+            </div>
+            <div class="tab-pane fade" id="satellites" role="tabpanel">
+                <div id="satellites-table"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@5.6.0/dist/js/tabulator.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="js/api.js"></script>
+    <script src="js/tables.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
