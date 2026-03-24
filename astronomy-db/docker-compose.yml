@@ -72,6 +72,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Сервис резервного копирования
+  backup:
+    image: postgres:15-alpine
+    container_name: astronomy-backup
+    restart: unless-stopped
+    volumes:
+      - ./backup:/backup
+      - ./backup.sh:/backup.sh:ro
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-astronomy_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Astronomy2024!}
+      POSTGRES_DB: ${POSTGRES_DB:-astronomy_catalog}
+    command: >
+      sh -c "
+        apk add --no-cache postgresql-client &&
+        while true; do
+          echo 'Running backup at ' $(date) &&
+          pg_dump -h $$POSTGRES_HOST -U $$POSTGRES_USER $$POSTGRES_DB > /backup/backup_$$(date +%Y%m%d_%H%M%S).sql &&
+          echo 'Backup completed' &&
+          sleep 86400;
+        done
+      "
+    depends_on:
+      - postgres
+    networks:
+      - astronomy-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
     driver: local
@@ -83,29 +116,3 @@ volumes:
 networks:
   astronomy-network:
     driver: bridge
-
-
-# Добавьте в docker-compose.yml
-backup:
-  image: postgres:15-alpine
-  container_name: astronomy-backup
-  restart: unless-stopped
-  volumes:
-    - ./backup:/backup
-    - ./backup.sh:/backup.sh:ro
-  environment:
-    POSTGRES_HOST: postgres
-    POSTGRES_USER: ${POSTGRES_USER}
-    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    POSTGRES_DB: ${POSTGRES_DB}
-  command: >
-    sh -c "
-      while true; do
-        /backup.sh;
-        sleep 86400;
-      done
-    "
-  depends_on:
-    - postgres
-  networks:
-    - astronomy-network
