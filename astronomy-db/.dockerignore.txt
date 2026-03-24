@@ -1,0 +1,7 @@
+.git
+.gitignore
+README.md
+backup/*.sql.gz
+.env
+*.log
+.DS_Store

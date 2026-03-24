@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  postgres:
+    build: .
+    container_name: astronomy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-astronomy_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Astronomy2024!}
+      POSTGRES_DB: ${POSTGRES_DB:-astronomy_catalog}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backup:/var/backups/postgresql
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-astronomy_admin} -d ${POSTGRES_DB:-astronomy_catalog}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - astronomy-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Опционально: pgAdmin для управления БД
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: astronomy-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@astronomy.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - astronomy-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Опционально: Redis для кеширования (если нужно)
+  redis:
+    image: redis:7-alpine
+    container_name: astronomy-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - astronomy-network
+    command: redis-server --appendonly yes
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  astronomy-network:
+    driver: bridge
+
+
+# Добавьте в docker-compose.yml
+backup:
+  image: postgres:15-alpine
+  container_name: astronomy-backup
+  restart: unless-stopped
+  volumes:
+    - ./backup:/backup
+    - ./backup.sh:/backup.sh:ro
+  environment:
+    POSTGRES_HOST: postgres
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${POSTGRES_DB}
+  command: >
+    sh -c "
+      while true; do
+        /backup.sh;
+        sleep 86400;
+      done
+    "
+  depends_on:
+    - postgres
+  networks:
+    - astronomy-network
