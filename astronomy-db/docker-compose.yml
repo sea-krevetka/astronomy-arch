@@ -116,3 +116,4 @@ volumes:
 networks:
   astronomy-network:
     driver: bridge
+
