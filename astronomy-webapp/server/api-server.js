@@ -161,6 +161,20 @@ app.get('/api/satellites/planet/:planetId', async (req, res) => {
     }
 });
 
+// Получить все малые тела
+app.get('/api/small-bodies', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM small_bodies 
+            ORDER BY id
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Ошибка при получении малых тел' });
+    }
+});
+
 // Получить типы галактик
 app.get('/api/galaxy-types', async (req, res) => {
     try {
@@ -196,7 +210,8 @@ app.get('/api/statistics', async (req, res) => {
                 (SELECT COUNT(*) FROM galaxies) as total_galaxies,
                 (SELECT COUNT(*) FROM stars) as total_stars,
                 (SELECT COUNT(*) FROM planets) as total_planets,
-                (SELECT COUNT(*) FROM satellites) as total_satellites
+                (SELECT COUNT(*) FROM satellites) as total_satellites,
+                (SELECT COUNT(*) FROM small_bodies) as total_small_bodies
         `);
         stats.total = total.rows[0];
         
@@ -255,6 +270,16 @@ app.get('/api/search', async (req, res) => {
                 LIMIT 10
             `, [`%${q}%`]);
             results.push(...planets.rows);
+        }
+        
+        if (type === 'small-bodies' || !type) {
+            const smallBodies = await pool.query(`
+                SELECT id, name, 'small-body' as type, body_type as info
+                FROM small_bodies 
+                WHERE name ILIKE $1
+                LIMIT 10
+            `, [`%${q}%`]);
+            results.push(...smallBodies.rows);
         }
         
         res.json(results);

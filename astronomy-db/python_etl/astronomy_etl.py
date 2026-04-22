@@ -1,527 +1,431 @@
-#!/usr/bin/env python3
-"""
-Скрипт для загрузки данных о галактиках, звездах и планетах из астрономических баз данных.
-"""
-
+import requests
 import psycopg2
-from psycopg2 import OperationalError
-from astroquery.simbad import Simbad
-from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
-from typing import Dict, List, Optional, Tuple
 import time
+import os
+import sys
+from datetime import datetime
 import logging
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from typing import Optional, Dict, Any, List
 
 # =====================================================
-# КОНФИГУРАЦИЯ ПОДКЛЮЧЕНИЯ К БД
+# Конфигурация подключения к БД
 # =====================================================
-
 DB_CONFIG = {
-    'dbname': 'astronomy_catalog',
-    'user': 'astronomy_admin',
-    'password': 'Astronomy2024!',
-    'host': 'localhost',
-    'port': 5433
+    'dbname': os.getenv('POSTGRES_DB', 'astronomy_catalog'),
+    'user': os.getenv('POSTGRES_USER', 'astronomy_admin'),
+    'password': os.getenv('POSTGRES_PASSWORD', 'Astronomy2024!'),
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('POSTGRES_PORT', '5433')
 }
 
-# Список галактик для загрузки (с правильными идентификаторами SIMBAD)
-GALAXIES_TO_LOAD = [
-    {'name': 'Млечный Путь', 'simbad_id': 'NAME Milky Way', 'type': 4},
-    {'name': 'Андромеда', 'simbad_id': 'M31', 'type': 3},
-    {'name': 'Треугольник', 'simbad_id': 'M33', 'type': 3},
-    {'name': 'Центавр A', 'simbad_id': 'NGC 5128', 'type': 1},
-    {'name': 'Водоворот', 'simbad_id': 'M51', 'type': 3},
-]
-
 # =====================================================
-# НАСТРОЙКА SIMBAD
+# Настройка логирования
 # =====================================================
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 
-Simbad.add_votable_fields(
-    'otype',
-    'sp_type',
-    'V',
-    'B',
-    'parallax',
-    'pmra', 'pmdec',
-    'rvz_radvel',
-    'dim',
-    'rvz_redshift',
-    'mesdistance',
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('sbdb_import.log', encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
+logger = logging.getLogger(__name__)
 
-# =====================================================
-# ФУНКЦИИ ДЛЯ РАБОТЫ С БАЗОЙ ДАННЫХ (без ON CONFLICT)
-# =====================================================
+# Базовый URL JPL SBDB API
+API_URL = "https://ssd-api.jpl.nasa.gov/sbdb.api"
 
-def test_db_connection():
-    """Тестирование подключения к БД"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        cursor.execute("SELECT version();")
-        version = cursor.fetchone()
-        logger.info(f"✅ Подключено к PostgreSQL: {version[0][:50]}...")
-        
-        cursor.execute("""
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public'
-            AND table_name IN ('galaxies', 'stars', 'planets', 'galaxy_types')
-        """)
-        tables = cursor.fetchall()
-        logger.info(f"📊 Найдены таблицы: {[t[0] for t in tables]}")
-        
-        cursor.close()
-        conn.close()
-        return True
-    except OperationalError as e:
-        logger.error(f"❌ Не удалось подключиться: {e}")
-        return False
-
-def get_db_connection():
-    """Создание соединения с PostgreSQL"""
-    return psycopg2.connect(**DB_CONFIG)
-
-def insert_galaxy_type(cursor, name: str, description: str = None) -> int:
-    """Вставка типа галактики"""
-    cursor.execute("""
-        INSERT INTO galaxy_types (name, description)
-        VALUES (%s, %s)
-        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-        RETURNING id
-    """, (name, description))
-    return cursor.fetchone()[0]
-
-def insert_galaxy(cursor, galaxy_data: Dict) -> int:
-    """Вставка галактики с проверкой существования (без ON CONFLICT)"""
-    # Проверяем, существует ли уже такая галактика
-    cursor.execute("SELECT id FROM galaxies WHERE name = %s", (galaxy_data['name'],))
-    existing = cursor.fetchone()
+class SBDatabaseImporter:
+    """Класс для импорта данных малых тел из JPL SBDB API"""
     
-    if existing:
-        galaxy_id = existing[0]
-        # Обновляем существующую запись
-        cursor.execute("""
-            UPDATE galaxies SET
-                galaxy_type_id = %s,
-                diameter_ly = %s,
-                star_count = %s,
-                mass_solar_masses = %s,
-                distance_from_earth_ly = %s,
-                metallicity = %s,
-                rotation_speed_kms = %s,
-                discovery_year = %s
-            WHERE id = %s
-        """, (
-            galaxy_data.get('galaxy_type_id'),
-            galaxy_data.get('diameter_ly'),
-            galaxy_data.get('star_count'),
-            galaxy_data.get('mass_solar_masses'),
-            galaxy_data.get('distance_from_earth_ly'),
-            galaxy_data.get('metallicity'),
-            galaxy_data.get('rotation_speed_kms'),
-            galaxy_data.get('discovery_year'),
-            galaxy_id
-        ))
-        logger.info(f"  Обновлена существующая галактика (ID: {galaxy_id})")
-        return galaxy_id
-    else:
-        # Вставляем новую галактику
-        cursor.execute("""
-            INSERT INTO galaxies (
-                name, galaxy_type_id, diameter_ly, star_count,
-                mass_solar_masses, distance_from_earth_ly,
-                metallicity, rotation_speed_kms, discovery_year
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            galaxy_data['name'],
-            galaxy_data.get('galaxy_type_id'),
-            galaxy_data.get('diameter_ly'),
-            galaxy_data.get('star_count'),
-            galaxy_data.get('mass_solar_masses'),
-            galaxy_data.get('distance_from_earth_ly'),
-            galaxy_data.get('metallicity'),
-            galaxy_data.get('rotation_speed_kms'),
-            galaxy_data.get('discovery_year')
-        ))
-        galaxy_id = cursor.fetchone()[0]
-        logger.info(f"  Добавлена новая галактика (ID: {galaxy_id})")
-        return galaxy_id
-
-def insert_star(cursor, star_data: Dict, galaxy_id: Optional[int] = None) -> Optional[int]:
-    """Вставка звезды с проверкой существования"""
-    try:
-        # Проверяем, существует ли уже такая звезда
-        cursor.execute("SELECT id FROM stars WHERE name = %s", (star_data['name'],))
-        existing = cursor.fetchone()
-        
-        if existing:
-            return existing[0]
-        
-        # Вставляем новую звезду
-        cursor.execute("""
-            INSERT INTO stars (
-                name, galaxy_id, mass_solar, temperature_k,
-                luminosity_solar, radius_solar, spectral_class,
-                distance_from_sun_ly, apparent_magnitude
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            star_data['name'],
-            galaxy_id,
-            star_data.get('mass_solar'),
-            star_data.get('temperature_k'),
-            star_data.get('luminosity_solar'),
-            star_data.get('radius_solar'),
-            star_data.get('spectral_class'),
-            star_data.get('distance_from_sun_ly'),
-            star_data.get('apparent_magnitude')
-        ))
-        result = cursor.fetchone()
-        return result[0] if result else None
-    except Exception as e:
-        logger.error(f"Ошибка при вставке звезды {star_data.get('name')}: {e}")
-        return None
-
-def insert_planet(cursor, planet_data: Dict, star_id: int) -> Optional[int]:
-    """Вставка планеты с проверкой существования"""
-    try:
-        # Проверяем, существует ли уже такая планета
-        cursor.execute("SELECT id FROM planets WHERE name = %s", (planet_data['name'],))
-        existing = cursor.fetchone()
-        
-        if existing:
-            return existing[0]
-        
-        cursor.execute("""
-            INSERT INTO planets (
-                name, star_id, planet_type, mass_earth,
-                diameter_km, orbital_period_days, distance_from_star_au,
-                surface_temperature_c, atmosphere_composition, satellites_count
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            planet_data['name'],
-            star_id,
-            planet_data.get('planet_type', 'Unknown'),
-            planet_data.get('mass_earth'),
-            planet_data.get('diameter_km'),
-            planet_data.get('orbital_period_days'),
-            planet_data.get('distance_from_star_au'),
-            planet_data.get('surface_temperature_c'),
-            planet_data.get('atmosphere_composition'),
-            planet_data.get('satellites_count', 0)
-        ))
-        result = cursor.fetchone()
-        return result[0] if result else None
-    except Exception as e:
-        logger.error(f"Ошибка при вставке планеты {planet_data.get('name')}: {e}")
-        return None
-
-# =====================================================
-# ФУНКЦИИ ЗАГРУЗКИ ДАННЫХ
-# =====================================================
-
-def load_galaxy_from_simbad(galaxy_name: str, simbad_id: str) -> Dict:
-    """Загрузка данных о галактике из SIMBAD"""
-    logger.info(f"📡 Загрузка данных о галактике {simbad_id}...")
+    def __init__(self, db_config: Dict[str, str]):
+        self.db_config = db_config
+        self.conn = None
+        self.stats = {
+            'total_processed': 0,
+            'successful': 0,
+            'failed': 0,
+            'skipped': 0
+        }
     
-    try:
-        result = Simbad.query_object(simbad_id)
-        if result is None or len(result) == 0:
-            logger.warning(f"Галактика {simbad_id} не найдена")
-            return {'name': galaxy_name}
-        
-        row = result[0]
-        galaxy_data = {
-            'name': galaxy_name,
-            'distance_from_earth_ly': None,
-            'metallicity': None,
-            'rotation_speed_kms': None,
-            'diameter_ly': None
+    def connect(self) -> bool:
+        """Установка соединения с базой данных"""
+        try:
+            self.conn = psycopg2.connect(**self.db_config)
+            logger.info(f"[OK] Подключение к БД {self.db_config['dbname']} на {self.db_config['host']}:{self.db_config['port']} успешно")
+            return True
+        except Exception as e:
+            logger.error(f"[ERROR] Ошибка подключения к БД: {e}")
+            return False
+    
+    def disconnect(self):
+        """Закрытие соединения"""
+        if self.conn:
+            self.conn.close()
+            logger.info("Соединение с БД закрыто")
+    
+    def _safe_get_dict_value(self, data: Any, key: str, default=None):
+        """Безопасное получение значения из словаря или списка"""
+        if isinstance(data, dict):
+            return data.get(key, default)
+        elif isinstance(data, list):
+            # Если это список словарей, ищем первый с нужным ключом
+            for item in data:
+                if isinstance(item, dict) and key in item:
+                    return item[key]
+        return default
+    
+    def _parse_physical_parameters(self, phys_data: Any) -> Dict[str, Any]:
+        """Парсинг физических параметров из разных форматов"""
+        result = {
+            'diameter': None,
+            'rot_per': None,
+            'albedo': None,
+            'spec_T': None,
+            'H': None
         }
         
-        if 'MESDISTANCE' in row.colnames and row['MESDISTANCE']:
-            try:
-                dist_pc = float(row['MESDISTANCE'])
-                galaxy_data['distance_from_earth_ly'] = int(dist_pc * 3.26156)
-                logger.info(f"  📍 Расстояние: {galaxy_data['distance_from_earth_ly']:,} св. лет")
-            except:
-                pass
+        if phys_data is None:
+            return result
         
-        if 'DIM' in row.colnames and row['DIM'] and galaxy_data['distance_from_earth_ly']:
-            try:
-                dim_arcmin = float(row['DIM'])
-                dim_rad = dim_arcmin / 60 * 3.14159 / 180
-                galaxy_data['diameter_ly'] = int(galaxy_data['distance_from_earth_ly'] * dim_rad)
-                logger.info(f"  📏 Диаметр: ~{galaxy_data['diameter_ly']:,} св. лет")
-            except:
-                pass
+        # Если это список (как в реальном API)
+        if isinstance(phys_data, list):
+            for param in phys_data:
+                if not isinstance(param, dict):
+                    continue
+                    
+                name = param.get('name', '').lower()
+                value = param.get('value')
+                
+                if name == 'diameter':
+                    result['diameter'] = value
+                elif name == 'rot_per':
+                    result['rot_per'] = value
+                elif name == 'albedo':
+                    result['albedo'] = value
+                elif name == 'spec_t':
+                    result['spec_T'] = value
+                elif name == 'h':
+                    result['H'] = value
+        # Если это словарь (старый формат)
+        elif isinstance(phys_data, dict):
+            result['diameter'] = phys_data.get('diameter')
+            result['rot_per'] = phys_data.get('rot_per')
+            result['albedo'] = phys_data.get('albedo')
+            result['spec_T'] = phys_data.get('spec_T')
+            result['H'] = phys_data.get('H')
         
-        return galaxy_data
-    except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        return {'name': galaxy_name}
-
-def get_galaxy_coordinates(simbad_id: str) -> Tuple[Optional[float], Optional[float]]:
-    """Получение координат галактики"""
-    try:
-        result = Simbad.query_object(simbad_id)
-        if result is None or len(result) == 0:
-            return None, None
-        
-        ra, dec = None, None
-        
-        if 'RA' in result.colnames and result['RA'][0]:
-            ra_str = str(result['RA'][0])
-            try:
-                parts = ra_str.split()
-                if len(parts) == 3:
-                    ra = float(parts[0]) + float(parts[1])/60 + float(parts[2])/3600
-                    ra = ra * 15
-                else:
-                    ra = float(ra_str)
-            except:
-                pass
-        
-        if 'DEC' in result.colnames and result['DEC'][0]:
-            dec_str = str(result['DEC'][0])
-            try:
-                parts = dec_str.split()
-                if len(parts) == 3:
-                    dec = abs(float(parts[0])) + float(parts[1])/60 + float(parts[2])/3600
-                    if dec_str.startswith('-'):
-                        dec = -dec
-                else:
-                    dec = float(dec_str)
-            except:
-                pass
-        
-        return ra, dec
-    except Exception as e:
-        logger.error(f"Ошибка получения координат: {e}")
-        return None, None
-
-def load_stars_near_coordinates(ra: float, dec: float, radius_deg: float = 0.3, limit: int = 15) -> List[Dict]:
-    """Загрузка звезд в окрестности координат"""
-    stars = []
+        return result
     
-    try:
-        coord_str = f"{ra} {dec}"
-        result = Simbad.query_region(coord_str, radius=f"{radius_deg}d")
-        
-        if result is None:
-            return stars
-        
-        star_count = 0
-        for row in result:
-            if star_count >= limit:
-                break
-                
-            otype = str(row.get('OTYPE', '')) if 'OTYPE' in row.colnames else ''
-            
-            if 'Star' in otype or 'star' in otype.upper():
-                star_data = {
-                    'name': row.get('MAIN_ID', f"Star_{ra}_{dec}_{star_count}") if 'MAIN_ID' in row.colnames else f"Star_{ra}_{dec}_{star_count}",
-                    'spectral_class': row.get('SP_TYPE', None) if 'SP_TYPE' in row.colnames else None,
-                    'apparent_magnitude': None,
-                    'distance_from_sun_ly': None,
-                    'mass_solar': None,
-                    'temperature_k': None,
-                    'luminosity_solar': None,
-                    'radius_solar': None
-                }
-                
-                if 'FLUX_V' in row.colnames and row['FLUX_V']:
-                    try:
-                        star_data['apparent_magnitude'] = float(row['FLUX_V'])
-                    except:
-                        pass
-                
-                if 'PARALLAX' in row.colnames and row['PARALLAX']:
-                    try:
-                        parallax_mas = float(row['PARALLAX'])
-                        if parallax_mas > 0:
-                            dist_pc = 1000 / parallax_mas
-                            star_data['distance_from_sun_ly'] = round(dist_pc * 3.26156, 2)
-                    except:
-                        pass
-                
-                if star_data['spectral_class']:
-                    spectral = star_data['spectral_class'].upper()
-                    temp_map = {'O': 30000, 'B': 15000, 'A': 9000, 'F': 6500, 'G': 5500, 'K': 4500, 'M': 3500}
-                    for key in temp_map:
-                        if spectral.startswith(key):
-                            star_data['temperature_k'] = temp_map[key]
-                            break
-                
-                stars.append(star_data)
-                star_count += 1
-        
-        logger.info(f"  ⭐ Найдено {len(stars)} звезд")
-        return stars
-    except Exception as e:
-        logger.error(f"Ошибка поиска звезд: {e}")
-        return stars
-
-def load_exoplanets_for_star(star_name: str) -> List[Dict]:
-    """Загрузка экзопланет"""
-    planets = []
-    
-    try:
-        clean_name = star_name.replace('*', '').replace('(', '').replace(')', '').strip()
-        simple_name = clean_name.split()[0].replace(',', '')
+    def fetch_object_data(self, search_term: str) -> Optional[Dict[str, Any]]:
+        """Запрашивает данные объекта через API JPL."""
+        params = {
+            'sstr': search_term.strip(),
+            'phys-par': 'true',
+            'discovery': 'true'
+        }
         
         try:
-            table = NasaExoplanetArchive.query_criteria(
-                table="ps",
-                select="pl_name,hostname,pl_masse,pl_rade,pl_orbper,pl_orbsmax,pl_eqt",
-                where=f"hostname like '%{simple_name}%'"
-            )
-        except:
-            return planets
+            logger.info(f"[REQUEST] Запрос данных для: {search_term}")
+            response = requests.get(API_URL, params=params, timeout=30)
+            
+            if response.status_code != 200:
+                logger.error(f"[HTTP {response.status_code}] Ошибка для {search_term}: {response.text[:200]}")
+                return None
+            
+            data = response.json()
+            
+            if 'error' in data:
+                logger.error(f"[API ERROR] {search_term}: {data['error']}")
+                return None
+                
+            return data
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"[TIMEOUT] Таймаут запроса для {search_term}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[NETWORK] Сетевая ошибка для {search_term}: {e}")
+        except ValueError as e:
+            logger.error(f"[JSON] Ошибка парсинга для {search_term}: {e}")
         
-        if table is None or len(table) == 0:
-            return planets
-        
-        for row in table:
-            try:
-                mass = float(row['pl_masse']) if row['pl_masse'] else None
-                planet_data = {
-                    'name': row['pl_name'],
-                    'planet_type': 'Газовый гигант' if mass and mass > 10 else 'Земная',
-                    'mass_earth': mass,
-                    'diameter_km': float(row['pl_rade']) * 12742 if row['pl_rade'] else None,
-                    'orbital_period_days': float(row['pl_orbper']) if row['pl_orbper'] else None,
-                    'distance_from_star_au': float(row['pl_orbsmax']) if row['pl_orbsmax'] else None,
-                    'surface_temperature_c': (float(row['pl_eqt']) - 273.15) if row['pl_eqt'] else None,
-                    'atmosphere_composition': None,
-                    'satellites_count': 0
-                }
-                planets.append(planet_data)
-            except:
-                continue
-        
-        if planets:
-            logger.info(f"    🪐 Найдено {len(planets)} планет")
-        
-    except Exception as e:
-        logger.debug(f"Не удалось загрузить планеты: {e}")
+        return None
     
-    return planets
+    def parse_and_insert(self, data: Dict[str, Any]) -> bool:
+        """Парсит JSON ответ API и вставляет/обновляет данные в таблице small_bodies."""
+        if not data or 'object' not in data:
+            logger.warning("Нет данных объекта в ответе API")
+            return False
+        
+        obj = data['object']
+        
+        # Обработка случая, когда 'object' возвращается как список
+        if isinstance(obj, list):
+            if not obj:
+                logger.warning("Пустой список объектов в ответе API")
+                return False
+            obj = obj[0]
+        
+        # Пропускаем объекты без орбитальных данных
+        if 'orbit' not in data:
+            logger.warning(f"Пропуск {obj.get('fullname')}: нет орбитальных данных")
+            self.stats['skipped'] += 1
+            return False
+        
+        orbit_data = data['orbit']
+        
+        # Определяем тип тела
+        kind_map = {
+            'an': 'Asteroid',
+            'cn': 'Comet',
+            'dn': 'Dwarf Planet'
+        }
+        body_type = kind_map.get(obj.get('kind'))
+        
+        # Парсим физические параметры (исправлено)
+        phys_raw = data.get('phys_par')
+        phys = self._parse_physical_parameters(phys_raw)
+        
+        # Данные об открытии
+        disc = data.get('discovery', {})
+        if isinstance(disc, list) and disc:
+            disc = disc[0] if isinstance(disc[0], dict) else {}
+        elif not isinstance(disc, dict):
+            disc = {}
+        
+        # Формируем SQL для UPSERT
+        sql = """
+        INSERT INTO small_bodies (
+            name, spk_id, designation, body_type,
+            epoch_jd, eccentricity, semi_major_axis_au, perihelion_au, aphelion_au,
+            inclination_deg, arg_periapsis_deg, long_asc_node_deg, mean_anomaly_deg,
+            orbital_period_days, diameter_km, rotation_period_h, albedo,
+            spectral_type, magnitude_h, discovery_date, discovery_site, discoverer,
+            is_pha, data_source
+        ) VALUES (
+            %(name)s, %(spk_id)s, %(designation)s, %(body_type)s,
+            %(epoch_jd)s, %(eccentricity)s, %(semi_major_axis_au)s, %(perihelion_au)s, %(aphelion_au)s,
+            %(inclination_deg)s, %(arg_periapsis_deg)s, %(long_asc_node_deg)s, %(mean_anomaly_deg)s,
+            %(orbital_period_days)s, %(diameter_km)s, %(rotation_period_h)s, %(albedo)s,
+            %(spectral_type)s, %(magnitude_h)s, %(discovery_date)s, %(discovery_site)s, %(discoverer)s,
+            %(is_pha)s, %(data_source)s
+        )
+        ON CONFLICT (spk_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            designation = EXCLUDED.designation,
+            body_type = EXCLUDED.body_type,
+            epoch_jd = EXCLUDED.epoch_jd,
+            eccentricity = EXCLUDED.eccentricity,
+            semi_major_axis_au = EXCLUDED.semi_major_axis_au,
+            perihelion_au = EXCLUDED.perihelion_au,
+            aphelion_au = EXCLUDED.aphelion_au,
+            inclination_deg = EXCLUDED.inclination_deg,
+            arg_periapsis_deg = EXCLUDED.arg_periapsis_deg,
+            long_asc_node_deg = EXCLUDED.long_asc_node_deg,
+            mean_anomaly_deg = EXCLUDED.mean_anomaly_deg,
+            orbital_period_days = EXCLUDED.orbital_period_days,
+            diameter_km = EXCLUDED.diameter_km,
+            rotation_period_h = EXCLUDED.rotation_period_h,
+            albedo = EXCLUDED.albedo,
+            spectral_type = EXCLUDED.spectral_type,
+            magnitude_h = EXCLUDED.magnitude_h,
+            discovery_date = EXCLUDED.discovery_date,
+            discovery_site = EXCLUDED.discovery_site,
+            discoverer = EXCLUDED.discoverer,
+            is_pha = EXCLUDED.is_pha,
+            data_source = EXCLUDED.data_source,
+            last_updated = CURRENT_TIMESTAMP
+        RETURNING id;
+        """
+        
+        # Подготовка параметров
+        designation = obj.get('des') or obj.get('designation')
+        
+        # Получаем абсолютную магнитуду (может быть в object или в phys)
+        magnitude_h = phys.get('H') or obj.get('H')
+        
+        # Конвертируем строковые значения в числа где нужно
+        try:
+            diameter = float(phys['diameter']) if phys.get('diameter') else None
+        except (TypeError, ValueError):
+            diameter = None
+            
+        try:
+            rot_period = float(phys['rot_per']) if phys.get('rot_per') else None
+        except (TypeError, ValueError):
+            rot_period = None
+            
+        try:
+            albedo = float(phys['albedo']) if phys.get('albedo') else None
+        except (TypeError, ValueError):
+            albedo = None
+        
+        params = {
+            'name': obj.get('fullname'),
+            'spk_id': obj.get('spkid'),
+            'designation': designation,
+            'body_type': body_type,
+            'epoch_jd': orbit_data.get('epoch'),
+            'eccentricity': orbit_data.get('e'),
+            'semi_major_axis_au': orbit_data.get('a'),
+            'perihelion_au': orbit_data.get('q'),
+            'aphelion_au': orbit_data.get('ad'),
+            'inclination_deg': orbit_data.get('i'),
+            'arg_periapsis_deg': orbit_data.get('w'),
+            'long_asc_node_deg': orbit_data.get('om'),
+            'mean_anomaly_deg': orbit_data.get('ma'),
+            'orbital_period_days': orbit_data.get('per'),
+            'diameter_km': diameter,
+            'rotation_period_h': rot_period,
+            'albedo': albedo,
+            'spectral_type': phys.get('spec_T'),
+            'magnitude_h': magnitude_h,
+            'discovery_date': disc.get('date'),
+            'discovery_site': disc.get('site'),
+            'discoverer': disc.get('by'),
+            'is_pha': obj.get('pha', False),
+            'data_source': f"https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr={obj.get('spkid', '')}"
+        }
+        
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, params)
+                inserted_id = cur.fetchone()[0]
+                self.conn.commit()
+                
+                pha_warning = " [PHA!]" if params['is_pha'] else ""
+                logger.info(f"[OK] Сохранен: {obj.get('fullname')} (ID: {inserted_id}, Тип: {body_type}){pha_warning}")
+                
+                # Выводим дополнительную информацию
+                if diameter:
+                    logger.info(f"     Диаметр: {diameter:.2f} км")
+                if magnitude_h:
+                    logger.info(f"     Абс. величина H: {magnitude_h}")
+                
+                return True
+                
+        except psycopg2.Error as e:
+            logger.error(f"[DB ERROR] {obj.get('fullname')}: {e.pgerror if hasattr(e, 'pgerror') else str(e)}")
+            self.conn.rollback()
+            return False
+        except Exception as e:
+            logger.error(f"[ERROR] {obj.get('fullname')}: {e}")
+            self.conn.rollback()
+            return False
+    
+    def import_objects(self, targets: list, delay: float = 1.5):
+        """Импорт списка объектов"""
+        logger.info(f"[START] Начало импорта {len(targets)} объектов")
+        start_time = datetime.now()
+        
+        for idx, target in enumerate(targets, 1):
+            logger.info(f"\n[{idx}/{len(targets)}] Обработка: {target}")
+            
+            data = self.fetch_object_data(target)
+            
+            if data:
+                if self.parse_and_insert(data):
+                    self.stats['successful'] += 1
+                else:
+                    self.stats['failed'] += 1
+            else:
+                self.stats['failed'] += 1
+            
+            self.stats['total_processed'] += 1
+            
+            if idx < len(targets):
+                time.sleep(delay)
+        
+        elapsed_time = datetime.now() - start_time
+        self.print_stats(elapsed_time)
+    
+    def print_stats(self, elapsed_time):
+        """Вывод статистики импорта"""
+        logger.info("\n" + "="*60)
+        logger.info("СТАТИСТИКА ИМПОРТА")
+        logger.info("="*60)
+        logger.info(f"Время выполнения: {elapsed_time}")
+        logger.info(f"Всего обработано: {self.stats['total_processed']}")
+        logger.info(f"Успешно импортировано: {self.stats['successful']}")
+        logger.info(f"Пропущено (нет данных): {self.stats['skipped']}")
+        logger.info(f"Ошибок: {self.stats['failed']}")
+        
+        if self.stats['total_processed'] > 0:
+            success_rate = (self.stats['successful'] / self.stats['total_processed']) * 100
+            logger.info(f"Процент успеха: {success_rate:.1f}%")
+        logger.info("="*60)
 
-# =====================================================
-# ОСНОВНАЯ ФУНКЦИЯ
-# =====================================================
+def get_sample_targets():
+    """Возвращает список известных малых тел для демонстрации"""
+    return [
+        # Карликовые планеты и крупные астероиды
+        "1",        # 1 Ceres
+        "2",        # 2 Pallas
+        "4",        # 4 Vesta
+        
+        # Известные астероиды
+        "433",      # 433 Eros
+        "243",      # 243 Ida
+        
+        # Потенциально опасные астероиды
+        "99942",    # Apophis
+        "101955",   # Bennu
+        
+        # Транснептуновые объекты
+        "134340",   # Pluto
+        
+        # Известные кометы
+        "1P",       # 1P/Halley
+        "67P",      # 67P/Churyumov-Gerasimenko
+    ]
 
 def main():
-    """Основная функция"""
-    logger.info("=" * 60)
-    logger.info("🌌 Загрузка астрономических данных в БД astronomy_catalog")
-    logger.info("=" * 60)
+    """Главная функция импорта"""
     
-    if not test_db_connection():
-        return
+    # Проверяем аргументы командной строки
+    if len(sys.argv) > 1:
+        targets = sys.argv[1:]
+        logger.info(f"Импорт указанных объектов: {', '.join(targets)}")
+    else:
+        targets = get_sample_targets()
+        logger.info(f"Импорт демонстрационного набора ({len(targets)} объектов)")
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # Создаем и запускаем импортер
+    importer = SBDatabaseImporter(DB_CONFIG)
+    
+    if not importer.connect():
+        logger.error("[FATAL] Не удалось подключиться к базе данных")
+        sys.exit(1)
     
     try:
-        # 1. Заполнение типов галактик
-        logger.info("\n📋 1. Заполнение galaxy_types...")
-        default_types = [
-            ('Эллиптическая', 'Эллиптические галактики без спиральной структуры'),
-            ('Линзовидная', 'Промежуточный тип между эллиптическими и спиральными'),
-            ('Спиральная', 'Дисковые галактики со спиральными рукавами'),
-            ('Спиральная с перемычкой', 'Спиральные галактики с баром'),
-            ('Неправильная', 'Галактики неправильной формы')
-        ]
-        
-        for type_name, type_desc in default_types:
-            type_id = insert_galaxy_type(cursor, type_name, type_desc)
-            logger.info(f"  ✅ {type_name} (ID: {type_id})")
-        
-        conn.commit()
-        
-        # 2. Загрузка галактик
-        logger.info("\n🌌 2. Загрузка галактик...")
-        
-        for gal in GALAXIES_TO_LOAD:
-            logger.info(f"\n--- {gal['name']} ({gal['simbad_id']}) ---")
+        # Проверяем наличие таблицы small_bodies
+        with importer.conn.cursor() as cur:
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'small_bodies'
+                );
+            """)
+            table_exists = cur.fetchone()[0]
             
-            gal_data = load_galaxy_from_simbad(gal['name'], gal['simbad_id'])
-            gal_data['galaxy_type_id'] = gal['type']
-            gal_data['discovery_year'] = None
-            gal_data['star_count'] = None
-            gal_data['mass_solar_masses'] = None
-            gal_data['metallicity'] = None
-            gal_data['rotation_speed_kms'] = None
-            
-            galaxy_id = insert_galaxy(cursor, gal_data)
-            conn.commit()
-            
-            # Получаем звезды в окрестности
-            ra, dec = get_galaxy_coordinates(gal['simbad_id'])
-            
-            if ra and dec:
-                logger.info(f"  📍 Координаты: RA={ra:.4f}°, DEC={dec:.4f}°")
-                stars = load_stars_near_coordinates(ra, dec, radius_deg=0.3, limit=10)
-                
-                for star in stars:
-                    star_id = insert_star(cursor, star, galaxy_id)
-                    conn.commit()
-                    
-                    if star_id:
-                        logger.info(f"    ⭐ {star['name']} (ID: {star_id})")
-                        
-                        time.sleep(0.5)
-                        planets = load_exoplanets_for_star(star['name'])
-                        
-                        for planet in planets:
-                            planet_id = insert_planet(cursor, planet, star_id)
-                            if planet_id:
-                                logger.info(f"      🪐 {planet['name']} (ID: {planet_id})")
-                        
-                        conn.commit()
-                    
-                    time.sleep(0.3)
-            else:
-                logger.warning("  ⚠️ Не удалось получить координаты")
-            
-            time.sleep(0.5)
+            if not table_exists:
+                logger.error("[FATAL] Таблица 'small_bodies' не найдена в базе данных!")
+                logger.info("Выполните SQL-скрипт для создания таблицы перед запуском импорта")
+                sys.exit(1)
         
-        # 3. Статистика
-        logger.info("\n" + "=" * 60)
-        logger.info("📊 3. СТАТИСТИКА ЗАГРУЖЕННЫХ ДАННЫХ")
-        logger.info("=" * 60)
+        # Запускаем импорт
+        importer.import_objects(targets, delay=1.5)
         
-        cursor.execute("""
-            SELECT 
-                (SELECT COUNT(*) FROM galaxies) as galaxies,
-                (SELECT COUNT(*) FROM stars) as stars,
-                (SELECT COUNT(*) FROM planets) as planets
-        """)
-        stats = cursor.fetchone()
-        
-        logger.info(f"  🌌 Галактик: {stats[0]}")
-        logger.info(f"  ⭐ Звезд: {stats[1]}")
-        logger.info(f"  🪐 Планет: {stats[2]}")
-        
-        logger.info("\n✨ Загрузка успешно завершена!")
-        
+    except KeyboardInterrupt:
+        logger.info("\nИмпорт прерван пользователем")
     except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        conn.rollback()
-        raise
+        logger.error(f"[FATAL] Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        cursor.close()
-        conn.close()
-        logger.info("🔌 Соединение с БД закрыто")
+        importer.disconnect()
 
 if __name__ == "__main__":
     main()

@@ -21,14 +21,14 @@ class AstronomyTables {
                 { title: "ID", field: "id", width: 70, headerFilter: "input", headerFilterPlaceholder: "Поиск по ID..." },
                 { title: "Название галактики", field: "galaxy_name", width: 200, headerFilter: "input", headerFilterPlaceholder: "Поиск по названию..." },
                 { title: "Тип", field: "galaxy_type", width: 180, headerFilter: "input", headerFilterPlaceholder: "Поиск по типу..." },
-                { title: "Диаметр (св. лет)", field: "diameter_ly", width: 150, formatter: "number", formatterParams: { thousands: " " }, headerFilter: "input" },
+                { title: "Диаметр (св. лет)", field: "diameter_ly", width: 150, headerFilter: "input" },
                 { title: "Количество звезд", field: "star_count", width: 150, headerFilter: "input" },
                 { title: "Масса (M☉)", field: "mass_solar_masses", width: 150, headerFilter: "input" },
-                { title: "Расстояние (св. лет)", field: "distance_from_earth_ly", width: 150, formatter: "number", formatterParams: { thousands: " " }, headerFilter: "input" },
-                { title: "Возраст (млрд лет)", field: "age_billion_years", width: 130, formatter: "number", formatterParams: { decimals: 1 }, headerFilter: "input" },
+                { title: "Расстояние (св. лет)", field: "distance_from_earth_ly", width: 150, headerFilter: "input" },
+                { title: "Возраст (млрд лет)", field: "age_billion_years", width: 130, headerFilter: "input" },
                 { title: "Металличность", field: "metallicity", width: 120, headerFilter: "input" },
-                { title: "Скорость вращения (км/с)", field: "rotation_speed_kms", width: 160, formatter: "number", headerFilter: "input" },
-                { title: "Год открытия", field: "discovery_year", width: 120, formatter: "number", headerFilter: "input", headerFilterPlaceholder: "Поиск по году..." }
+                { title: "Скорость вращения (км/с)", field: "rotation_speed_kms", width: 160, headerFilter: "input" },
+                { title: "Год открытия", field: "discovery_year", width: 120, headerFilter: "input", headerFilterPlaceholder: "Поиск по году..." }
             ],
             rowFormatter: (row) => {
                 const data = row.getData();
@@ -47,9 +47,9 @@ class AstronomyTables {
                 { title: "Название звезды", field: "star_name", width: 200, headerFilter: "input", headerFilterPlaceholder: "Поиск по названию..." },
                 { title: "Галактика", field: "galaxy_name", width: 180, headerFilter: "input" },
                 { title: "Состав", field: "composition", width: 200, headerFilter: "input" },
-                { title: "Масса (M☉)", field: "mass_sun", width: 120, formatter: "number", formatterParams: { decimals: 2 }, headerFilter: "input" },
+                { title: "Масса (M☉)", field: "mass_sun", width: 120, headerFilter: "input" },
                 { title: "Спектральный класс", field: "spectral_class", width: 130, headerFilter: "input" },
-                { title: "Температура (K)", field: "temperature_k", width: 130, formatter: "number", formatterParams: { thousands: " " }, headerFilter: "input" },
+                { title: "Температура (K)", field: "temperature_k", width: 130, headerFilter: "input" },
                 { title: "Год открытия", field: "discovery_year", width: 120, headerFilter: "input", headerFilterPlaceholder: "Поиск по году..." }
             ]
         });
@@ -65,8 +65,8 @@ class AstronomyTables {
                 { title: "Название планеты", field: "planet_name", width: 180, headerFilter: "input", headerFilterPlaceholder: "Поиск по названию..." },
                 { title: "Звезда", field: "star_name", width: 180, headerFilter: "input" },
                 { title: "Тип планеты", field: "planet_type", width: 130, headerFilter: "input" },
-                { title: "Масса (M⊕)", field: "mass_earth", width: 120, formatter: "number", formatterParams: { decimals: 2 }, headerFilter: "input" },
-                { title: "Период обращения (дней)", field: "orbital_period_days", width: 150, formatter: "number", formatterParams: { decimals: 2 }, headerFilter: "input" },
+                { title: "Масса (M⊕)", field: "mass_earth", width: 120, headerFilter: "input" },
+                { title: "Период обращения (дней)", field: "orbital_period_days", width: 150, headerFilter: "input" },
                 { title: "Год открытия", field: "discovery_year", width: 120, headerFilter: "input" }
             ]
         });
@@ -82,13 +82,32 @@ class AstronomyTables {
                 { title: "Название спутника", field: "satellite_name", width: 180, headerFilter: "input", headerFilterPlaceholder: "Поиск по названию..." },
                 { title: "Планета", field: "planet_name", width: 180, headerFilter: "input" },
                 { title: "Тип", field: "satellite_type", width: 120, headerFilter: "input" },
-                { title: "Диаметр (км)", field: "diameter_km", width: 120, formatter: "number", formatterParams: { decimals: 2 }, headerFilter: "input" },
-                { title: "Период обращения (дней)", field: "orbital_period_days", width: 150, formatter: "number", formatterParams: { decimals: 2 }, headerFilter: "input" },
+                { title: "Диаметр (км)", field: "diameter_km", width: 120, headerFilter: "input" },
+                { title: "Период обращения (дней)", field: "orbital_period_days", width: 150, headerFilter: "input" },
                 { title: "Год открытия", field: "discovery_year", width: 120, headerFilter: "input" }
             ]
         });
         
-        console.log('Таблицы инициализированы');
+        // Таблица малых тел
+        this.tables.smallBodies = new Tabulator("#small-bodies-table", {
+            height: "500px",
+            layout: "fitColumns",
+            responsiveLayout: "collapse",
+            placeholder: "Нет данных для отображения",
+            columns: [
+                { title: "ID", field: "id", width: 70, headerFilter: "input" },
+                { title: "Название", field: "name", width: 200, headerFilter: "input", headerFilterPlaceholder: "Поиск по названию..." },
+                { title: "Обозначение", field: "designation", width: 150, headerFilter: "input" },
+                { title: "Тип", field: "body_type", width: 120, headerFilter: "input" },
+                { title: "Диаметр (км)", field: "diameter_km", width: 120, headerFilter: "input" },
+                { title: "Спектральный класс", field: "spectral_type", width: 130, headerFilter: "input" },
+                { title: "Альбедо", field: "albedo", width: 100, headerFilter: "input" },
+                { title: "PHA", field: "is_pha", width: 80, formatter: "tickCross", headerFilter: "tickCross" },
+                { title: "Дата открытия", field: "discovery_date", width: 120, headerFilter: "input" }
+            ]
+        });
+        
+        console.log('Таблицы инициализированы:', Object.keys(this.tables));
     }
     
     async loadGalaxies() {
@@ -139,6 +158,20 @@ class AstronomyTables {
             return data;
         } catch (error) {
             console.error('Ошибка загрузки спутников:', error);
+            return [];
+        }
+    }
+    
+    async loadSmallBodies() {
+        try {
+            console.log('Загрузка малых тел...');
+            const data = await api.getSmallBodies();
+            console.log('Загружено малых тел:', data.length);
+            this.tables.smallBodies.setData(data);
+            if (window.tableAlgorithms) window.tableAlgorithms.setData('smallBodies', data);
+            return data;
+        } catch (error) {
+            console.error('Ошибка загрузки малых тел:', error);
             return [];
         }
     }

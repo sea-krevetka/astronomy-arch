@@ -9,6 +9,7 @@ class AstronomyApp {
         await this.loadStatistics();
         await this.loadAllTables();
         this.setupEventHandlers();
+        this.setupTabChangeHandlers();
         console.log('Приложение готово!');
     }
     
@@ -19,6 +20,7 @@ class AstronomyApp {
             document.getElementById('total-stars').textContent = stats.total?.total_stars || 0;
             document.getElementById('total-planets').textContent = stats.total?.total_planets || 0;
             document.getElementById('total-satellites').textContent = stats.total?.total_satellites || 0;
+            document.getElementById('total-small-bodies').textContent = stats.total?.total_small_bodies || 0;
             console.log('Статистика загружена:', stats);
         } catch (error) {
             console.error('Ошибка загрузки статистики:', error);
@@ -32,7 +34,8 @@ class AstronomyApp {
                 astronomyTables.loadGalaxies(),
                 astronomyTables.loadStars(),
                 astronomyTables.loadPlanets(),
-                astronomyTables.loadSatellites()
+                astronomyTables.loadSatellites(),
+                astronomyTables.loadSmallBodies()
             ]);
             console.log('Все данные загружены');
         } catch (error) {
@@ -77,6 +80,7 @@ class AstronomyApp {
         if (activeTab && activeTab.id === 'stars') return 'stars';
         if (activeTab && activeTab.id === 'planets') return 'planets';
         if (activeTab && activeTab.id === 'satellites') return 'satellites';
+        if (activeTab && activeTab.id === 'small-bodies') return 'smallBodies';
         return 'galaxies';
     }
     
@@ -100,6 +104,7 @@ class AstronomyApp {
         if (type === 'stars') keyField = 'star_name';
         if (type === 'planets') keyField = 'planet_name';
         if (type === 'satellites') keyField = 'satellite_name';
+        if (type === 'smallBodies') keyField = 'name';
         
         if (!window.tableAlgorithms) {
             this.showMessage('⚠️ Алгоритмы не загружены', 'warning');
@@ -166,18 +171,90 @@ class AstronomyApp {
         }
     }
     
-    setupRowClickHandlers() {
-        const types = ['galaxies', 'stars', 'planets', 'satellites'];
+    setupTabChangeHandlers() {
+        const types = ['galaxies', 'stars', 'planets', 'satellites', 'smallBodies'];
         types.forEach(type => {
             if (astronomyTables.tables[type]) {
-                astronomyTables.tables[type].on('rowClick', (e, row) => {
-                    const data = row.getData();
-                    this.showObjectDetails(type, data);
+                astronomyTables.tables[type].on('tableBuilt', () => {
+                    console.log(`Таблица ${type} построена`);
                 });
             }
         });
     }
     
+    setupRowClickHandlers() {
+        const types = ['galaxies', 'stars', 'planets', 'satellites', 'smallBodies'];
+        types.forEach(type => {
+            if (astronomyTables.tables[type]) {
+                astronomyTables.tables[type].on('rowClick', (e, row) => {
+                    const data = row.getData();
+                    this.handleRowSelection(type, data);
+                });
+            }
+        });
+    }
+    
+    handleRowSelection(type, data) {
+        if (type === 'galaxies') {
+            this.filterStarsByGalaxy(data.galaxy_name);
+        } else if (type === 'stars') {
+            this.filterPlanetsByStar(data.star_name);
+        } else if (type === 'planets') {
+            this.filterSatellitesByPlanet(data.planet_name);
+        } else if (type === 'satellites') {
+            this.showObjectDetails(type, data);
+        } else if (type === 'smallBodies') {
+            this.showObjectDetails(type, data);
+        }
+    }
+
+    filterStarsByGalaxy(galaxyName) {
+        const starsTable = astronomyTables.tables.stars;
+        if (!starsTable) return;
+
+        starsTable.clearFilter(true);
+        starsTable.setFilter('galaxy_name', '=', galaxyName);
+        this.selectTab('stars-tab');
+        setTimeout(() => {
+            const rows = starsTable.getRows();
+            if (rows.length) rows[0].select();
+        }, 100);
+        this.showMessage(`Фильтр звезд по галактике "${galaxyName}" применен`, 'success');
+    }
+
+    filterPlanetsByStar(starName) {
+        const planetsTable = astronomyTables.tables.planets;
+        if (!planetsTable) return;
+
+        planetsTable.clearFilter(true);
+        planetsTable.setFilter('star_name', '=', starName);
+        this.selectTab('planets-tab');
+        setTimeout(() => {
+            const rows = planetsTable.getRows();
+            if (rows.length) rows[0].select();
+        }, 100);
+        this.showMessage(`Фильтр планет по звезде "${starName}" применен`, 'success');
+    }
+
+    filterSatellitesByPlanet(planetName) {
+        const satellitesTable = astronomyTables.tables.satellites;
+        if (!satellitesTable) return;
+
+        satellitesTable.clearFilter(true);
+        satellitesTable.setFilter('planet_name', '=', planetName);
+        this.selectTab('satellites-tab');
+        setTimeout(() => {
+            const rows = satellitesTable.getRows();
+            if (rows.length) rows[0].select();
+        }, 100);
+        this.showMessage(`Фильтр спутников по планете "${planetName}" применен`, 'success');
+    }
+
+    selectTab(tabId) {
+        const tab = document.getElementById(tabId);
+        if (tab) new bootstrap.Tab(tab).show();
+    }
+
     showObjectDetails(type, data) {
         if (type === 'galaxies') {
             alert(`Галактика: ${data.galaxy_name}\nТип: ${data.galaxy_type}\nДиаметр: ${data.diameter_ly} св. лет\nВозраст: ${data.age_billion_years} млрд лет`);
@@ -187,6 +264,8 @@ class AstronomyApp {
             alert(`Планета: ${data.planet_name}\nЗвезда: ${data.star_name}\nТип: ${data.planet_type}\nМасса: ${data.mass_earth} M⊕`);
         } else if (type === 'satellites') {
             alert(`Спутник: ${data.satellite_name}\nПланета: ${data.planet_name}\nДиаметр: ${data.diameter_km} км`);
+        } else if (type === 'smallBodies') {
+            alert(`Малое тело: ${data.name}\nТип: ${data.body_type}\nДиаметр: ${data.diameter_km} км\nСпектральный класс: ${data.spectral_type}\nPHA: ${data.is_pha ? 'Да' : 'Нет'}`);
         }
     }
     
@@ -252,7 +331,7 @@ class AstronomyApp {
     }
     
     navigateToObject(type, id) {
-        const tabMap = { galaxy: 'galaxies-tab', star: 'stars-tab', planet: 'planets-tab', satellite: 'satellites-tab' };
+        const tabMap = { galaxy: 'galaxies-tab', star: 'stars-tab', planet: 'planets-tab', satellite: 'satellites-tab', 'small-body': 'small-bodies-tab' };
         const tabId = tabMap[type];
         if (tabId) {
             const tab = document.getElementById(tabId);
@@ -260,6 +339,7 @@ class AstronomyApp {
             setTimeout(() => {
                 const table = astronomyTables.tables[type + 's'];
                 if (table) {
+                    table.clearFilter(true);
                     const row = table.getRows().find(r => r.getData().id == id);
                     if (row) { row.scrollTo(); row.select(); }
                 }

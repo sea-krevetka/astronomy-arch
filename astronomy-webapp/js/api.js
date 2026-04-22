@@ -62,6 +62,11 @@ class AstronomyAPI {
         return this.request(`/satellites/planet/${planetId}`);
     }
     
+    // Малые тела
+    async getSmallBodies() {
+        return this.request('/small-bodies');
+    }
+    
     // Типы галактик
     async getGalaxyTypes() {
         return this.request('/galaxy-types');

@@ -1,14 +1,9 @@
-// ============================================
-// Алгоритмы для лабораторной работы
-// ============================================
-
 class AstronomyAlgorithms {
     constructor() {
         this.comparisons = 0;
         this.swaps = 0;
     }
 
-    // ==================== QUICKSORT ====================
     quickSort(arr, field, ascending = true) {
         if (!arr || arr.length <= 1) return arr;
         
@@ -61,7 +56,6 @@ class AstronomyAlgorithms {
         }
     }
     
-    // ==================== АЛГОРИТМ РАБИНА-КАРПА ====================
     rabinKarpMatch(text, pattern) {
         const textLength = text.length;
         const patternLength = pattern.length;
@@ -140,7 +134,6 @@ class AstronomyAlgorithms {
         return results;
     }
     
-    // ==================== ДЕРЕВО ОПТИМАЛЬНОГО ПОИСКА (А2) ====================
     buildOptimalSearchTree(data, keyField, weightField = null) {
         if (!data || data.length === 0) return null;
         
@@ -247,10 +240,8 @@ class AstronomyAlgorithms {
     }
 }
 
-// Создаем глобальный экземпляр
 const algorithms = new AstronomyAlgorithms();
 
-// ==================== КЛАСС ДЛЯ РАБОТЫ С ТАБЛИЦАМИ ====================
 class AstronomyTableAlgorithms {
     constructor(tableManager) {
         this.tableManager = tableManager;
